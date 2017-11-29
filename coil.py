@@ -5,6 +5,7 @@ class coil():
 			'spindleRot' : 100,
 			'xAxis' : "X",
 			'wireWidth' : 1.0,
+			'feed':500
 		}
 		self.x = 0.0
 		self.theta = 0.0
@@ -76,4 +77,8 @@ class coil():
 					o+=self.xAxis+str(c['x'])
 				if 'theta' in c:
 					o+=self.spindleAxis + str(c['theta'])
+				if 'feed' in c:
+					o+="F"+str(c['feed'])
+				else:
+					o+="F"+str(self.feed)
 				print o

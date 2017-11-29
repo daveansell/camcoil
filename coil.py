@@ -70,6 +70,7 @@ class coil():
                         {'cmd':'go', 'theta':self.theta})
 
 	def render(self):
+		output = []
 		for c in self.commands:
 			if c['cmd']=='go':
 				o='G1'
@@ -81,4 +82,8 @@ class coil():
 					o+="F"+str(c['feed'])
 				else:
 					o+="F"+str(self.feed)
-				print o
+				output.append(o)
+		return output
+	def renderFile(self,filename):
+		f = open(filename+".ngc", 'w')
+		f.write("\n".join(self.render()))

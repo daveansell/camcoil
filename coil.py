@@ -6,11 +6,11 @@ class coil():
 			'spindleRot' : 1.0,
 			'xAxis' : "X",
 			'wireWidth' : 1.0,
-			'feedY':600,
 			'coilRad':10, #if coil is non-circular it is the largest radius (if it has flat sides fudge
 			'armCentreRad':50,
 			'armLength':15,
 			'castorAngleFactor':0.4,
+			'feed':500
 		}
 		self.x = 0.0
 		self.theta = 0.0
@@ -113,6 +113,7 @@ class coil():
                         {'cmd':'go', 'theta':self.theta})
 
 	def render(self):
+		output = []
 		for c in self.commands:
 			if c['cmd']=='go':
 				o='G1'
@@ -120,10 +121,17 @@ class coil():
 					o+=self.xAxis+str(round(c['x'],4))
 				if 'theta' in c:
 					o+=self.spindleAxis + str(round(c['theta'],4))
-				o+="F"+str(self.feedY)
+				if 'feed' in c:
+					o+="F"+str(c['feed'])
+				else:
+					o+="F"+str(self.feed)
 			if c['cmd']=='comment':
 				o="("+str(c['text'])+")"
-			print o
+			output.append(o)
+		return output
+	def renderFile(self,filename):
+		f = open(filename+".ngc", 'w')
+		f.write("\n".join(self.render()))
 
 	def maxCastorAngle(self, dBobbin, dWire):
 		return 51.52*dBobbin**-0.41 + 11.31**-0.33 + math.log(dWire)

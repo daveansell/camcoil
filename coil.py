@@ -10,6 +10,8 @@ class coil():
 			'armCentreRad':50,
 			'armLength':15,
 			'castorAngleFactor':0.4,
+			'jumpAngleFactor':1.1,
+			'jumpTheta':1.0,
 			'feed':500
 		}
 		self.x = 0.0
@@ -23,38 +25,44 @@ class coil():
 			setattr(self, c, conf[c])
 		self.commands = []
 
-	def add_turns( self, numturns, xdir, tdir, castorDist, mode):
-		slope = float(self.wireWidth)/self.spindleRot
+	def add_turns( self, numturns, xdir, tdir, castorDist, jumpCastorDist,mode):
+		slope = float(self.wireWidth)
 		castorTheta = castorDist/slope
 		if mode=='simple':
-			self.x += float(self.wireWidth) * numturns * xdir
-			self.theta += float(self.spindleRot) * numturns * tdir
-			self.commands.append({
-				'cmd':'go', 
-				'x':self.x,#+float(self.wireWidth)*numturns, 
-				'theta':self.theta,#+float(self.spindleRot)*numturns*tdir
-			})
+			self.moveRel ( float(self.wireWidth) * numturns * xdir,
+					 numturns * tdir)
+
 		elif mode in ['bobbin', 'bobbinStart'] :
-			self.theta += min(castorTheta, numturns)*tdir
-			self.commands.append({
-                                'cmd':'go',
-                                'x':self.x,#+float(self.wireWidth)*numturns, 
-                                'theta':self.theta,#+float(self.spindleRot)*numturns*tdir
-                        })
-			self.x += max((float(self.wireWidth) * numturns -castorDist),0) *xdir
-                        self.theta += max((float(self.spindleRot) * numturns )-castorTheta,0) *tdir
-			self.commands.append({
-                                'cmd':'go',
-                                'x':self.x,#+float(self.wireWidth)*numturns, 
-                                'theta':self.theta,#+float(self.spindleRot)*numturns*tdir
-                        })
+			self.moveRel (0, min(castorTheta, numturns)*tdir)
+			self.moveRel ( max((float(self.wireWidth) * numturns -castorDist),0) *xdir,
+					 max( numturns -castorTheta,0) *tdir)
 		if mode in ['bobbin']:
-			self.x += castorDist * xdir
-			self.commands.append({
-                                'cmd':'go',
-                                'x':self.x,#+float(self.wireWidth)*numturns, 
-                                'theta':self.theta,#+float(self.spindleRot)*numturns*tdir
-                        })
+			self.moveRel (castorDist * xdir,0)
+
+		if mode in ['freeStandingStart']:
+			print min(1.0, numturns)*slope*xdir
+			self.moveRel ( min(1.0, numturns)*slope*xdir, min(1.0, numturns)*tdir)
+			self.moveRel ( 0, min(castorTheta, numturns)*tdir)
+			self.moveRel (slope*max(0, numturns-1.0-castorTheta)*xdir, 
+					max(0, numturns-1.0-castorTheta)*tdir) 
+		if mode in ['freeStanding']:
+			self.moveRel ( (jumpCastorDist-castorDist)*xdir , 0)
+			self.moveRel ( 0, self.jumpTheta*tdir)
+			self.moveRel ( (-jumpCastorDist+self.jumpTheta*slope)*xdir, 0)
+			self.moveRel (0, min(castorTheta, numturns)*tdir)
+			self.moveRel (slope*max(0, numturns-self.jumpTheta-castorTheta)*xdir, 
+					max(0, numturns-self.jumpTheta-castorTheta)*tdir) 
+		
+
+	def moveRel(self, dx, dTheta):
+		print str(dx)+","+str(dTheta)
+		self.x += dx
+		self.theta += dTheta
+		self.commands.append({
+                        'cmd':'go',
+                        'x':self.x,#+float(self.wireWidth)*numturns, 
+                        'theta':float(self.spindleRot)*self.theta,#+float(self.spindleRot)*numturns*tdir
+                })
 
 	def add_coil( self, numturns, tdir, xstart, xend, **config ):
 		if 'mode' in config:
@@ -69,10 +77,13 @@ class coil():
 			coilRad = config['coilRad']	 #if coil is non-circular it is the largest radius (if it has flat sides fudge
 		else:
 			coilRad = self.coilRad
-		castorAngle = self.castorAngleFactor*self.maxCastorAngle(coilRad*2, self.wireWidth)
+		maxCastorAngle = self.maxCastorAngle(coilRad*2, self.wireWidth)
+		castorAngle = self.castorAngleFactor * maxCastorAngle
 		armDist = math.sqrt(self.armCentreRad**2+coilRad**2)-self.armLength
 		castorDist = armDist*math.sin(castorAngle/180.0*math.pi)
-
+		
+		jumpCastorDist = armDist*math.sin(self.jumpAngleFactor*maxCastorAngle/180.0*math.pi)
+		
 		turnsleft = numturns
 		self.move(xstart)
 		if(xstart>xend):
@@ -85,22 +96,28 @@ class coil():
 		length = abs(float(xend)-xstart)
 		layerTurns = length/self.wireWidth
 #		print "layerTurns="+str(layerTurns)+" x="+str(self.x)
-
+		start=True
 		while turnsleft>layerTurns:
-			self.add_turns(layerTurns, xdir, tdir, castorDist, mode)
+			if mode in ['bobbin', 'freeStanding'] and start:
+				self.add_turns(layerTurns, xdir, tdir, castorDist, jumpCastorDist, mode+'Start')
+				start=False
+			else:
+				self.add_turns(layerTurns, xdir, tdir, castorDist, jumpCastorDist, mode)
 			xdir*=-1
 			turnsleft-=layerTurns
 			if freeStanding and layerTurns>1:
 				layerTurns-=1
 #				print "layerTurns="+str(layerTurns)+" x="+str(self.x)
-		if mode=='bobbin':
-			self.add_turns(turnsleft, xdir, tdir, castorDist, 'bobbinStart')
-		else:
-			self.add_turns(turnsleft, xdir, tdir, castorDist, mode)
+		self.add_turns(turnsleft, xdir, tdir, castorDist, jumpCastorDist, mode)
 
-	def move( self, xto):
-		self.commands.append(
-                        {'cmd':'go', 'x':xto})
+	def move( self, xto, thetaTo=None):
+		if thetaTo is None:
+			self.commands.append(
+     		                 {'cmd':'go', 'x':xto})
+		else:
+			self.commands.append(
+                                 {'cmd':'go', 'x':xto, 'theta':thetaTo})
+			self.theta = thetaTo
 		self.x = xto
 	def toAngle( self, angle, tdir):
 		current = self.theta % self.spindleRot

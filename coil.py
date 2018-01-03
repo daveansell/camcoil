@@ -35,14 +35,14 @@ class coil():
 				'theta':self.theta,#+float(self.spindleRot)*numturns*tdir
 			})
 		elif mode in ['bobbin', 'bobbinStart'] :
-			self.theta += castorTheta*tdir
+			self.theta += min(castorTheta, numturns)*tdir
 			self.commands.append({
                                 'cmd':'go',
                                 'x':self.x,#+float(self.wireWidth)*numturns, 
                                 'theta':self.theta,#+float(self.spindleRot)*numturns*tdir
                         })
-			self.x += (float(self.wireWidth) * numturns -castorDist) *xdir
-                        self.theta += (float(self.spindleRot) * numturns )-castorTheta *tdir
+			self.x += max((float(self.wireWidth) * numturns -castorDist),0) *xdir
+                        self.theta += max((float(self.spindleRot) * numturns )-castorTheta,0) *tdir
 			self.commands.append({
                                 'cmd':'go',
                                 'x':self.x,#+float(self.wireWidth)*numturns, 
@@ -69,19 +69,21 @@ class coil():
 			coilRad = config['coilRad']	 #if coil is non-circular it is the largest radius (if it has flat sides fudge
 		else:
 			coilRad = self.coilRad
-
 		castorAngle = self.castorAngleFactor*self.maxCastorAngle(coilRad*2, self.wireWidth)
 		armDist = math.sqrt(self.armCentreRad**2+coilRad**2)-self.armLength
 		castorDist = armDist*math.sin(castorAngle/180.0*math.pi)
 
 		turnsleft = numturns
 		self.move(xstart)
-		length = abs(float(xend)-xstart)
-		layerTurns = length/self.wireWidth
 		if(xstart>xend):
 			xdir = -1
 		else:
 			xdir = 1
+		if mode=='bobbin':
+			xend-=self.wireWidth*xdir
+
+		length = abs(float(xend)-xstart)
+		layerTurns = length/self.wireWidth
 #		print "layerTurns="+str(layerTurns)+" x="+str(self.x)
 
 		while turnsleft>layerTurns:
@@ -134,4 +136,4 @@ class coil():
 		f.write("\n".join(self.render()))
 
 	def maxCastorAngle(self, dBobbin, dWire):
-		return 51.52*dBobbin**-0.41 + 11.31**-0.33 + math.log(dWire)
+		return 51.52*dBobbin**-0.41 + 11.31**-0.33 * math.log(dWire)

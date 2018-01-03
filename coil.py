@@ -7,8 +7,8 @@ class coil():
 			'xAxis' : "X",
 			'wireWidth' : 1.0,
 			'coilRad':10, #if coil is non-circular it is the largest radius (if it has flat sides fudge
-			'armCentreRad':50,
-			'armLength':15,
+			'armCentreRad':60.0,
+			'armLength':10.0,
 			'castorAngleFactor':0.4,
 			'jumpAngleFactor':1.1,
 			'jumpTheta':1.0,
@@ -32,11 +32,16 @@ class coil():
 			self.moveRel ( float(self.wireWidth) * numturns * xdir,
 					 numturns * tdir)
 
-		elif mode in ['bobbin', 'bobbinStart'] :
+		elif mode in ['bobbin'] :
 			self.moveRel (0, min(castorTheta, numturns)*tdir)
 			self.moveRel ( max((float(self.wireWidth) * numturns -castorDist),0) *xdir,
 					 max( numturns -castorTheta,0) *tdir)
-		if mode in ['bobbin']:
+			self.moveRel (castorDist * xdir,0)
+		elif mode in ['bobbinStart'] :
+			self.moveRel ( min(1.0, numturns)*slope*xdir, min(1.0, numturns)*tdir)
+			self.moveRel ( 0, min(castorTheta, numturns)*tdir)
+			self.moveRel (slope*max(0, numturns-1.0-castorTheta)*xdir, 
+					max(0, numturns-1.0-castorTheta)*tdir) 
 			self.moveRel (castorDist * xdir,0)
 
 		if mode in ['freeStandingStart']:

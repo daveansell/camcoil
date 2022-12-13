@@ -1,4 +1,5 @@
 import math
+import pprint
 class camcoil():
 	def __init__( self, **config):
 		conf={
@@ -12,7 +13,10 @@ class camcoil():
 			'castorAngleFactor':0.4,
 			'jumpAngleFactor':1.1,
 			'jumpTheta':1.0,
-			'feed':500
+			'feed':500,
+                        'prefixGcode':'G10 P0 L20 Y0',
+                        'endProportion':0.05,
+                        'endSlowdown':0.2,
 		}
 		self.x = 0.0
 		self.theta = 0.0
@@ -20,7 +24,7 @@ class camcoil():
 			if c in conf:
 				conf[c]=config[c]
 			else:
-				print str(c)+" is not a normal config"
+				print (str(c)+" is not a normal config")
 		for c in conf:
 			setattr(self, c, conf[c])
 		self.commands = []
@@ -28,20 +32,30 @@ class camcoil():
 	def add_turns( self, numturns, xdir, tdir, castorDist, jumpCastorDist,mode):
 		slope = float(self.wireWidth)
 		castorTheta = castorDist/slope
+                eturns = min(numturns, self.endTurns)
+                mturns = numturns - eturns
+                print(mode + str(slope))
 		if mode=='simple':
-			self.moveRel ( float(self.wireWidth) * numturns * xdir,
-					 numturns * tdir)
+			self.moveRel ( float(self.wireWidth) * eturns * xdir,
+					 eturns * tdir, self.feed*self.endSlowdown)
+			self.moveRel ( float(self.wireWidth) * mturns * xdir,
+					 mturns * tdir)
 
 		elif mode in ['bobbin'] :
-			self.moveRel (0, min(castorTheta, numturns)*tdir)
-			self.moveRel ( max((float(self.wireWidth) * numturns -castorDist),0) *xdir,
-					 max( numturns -castorTheta,0) *tdir)
-			self.moveRel (castorDist * xdir,0)
+			self.moveRel (0, min(castorTheta, numturns)*tdir, self.feed*self.endSlowdown)
+			self.moveRel ( max((float(self.wireWidth) * mturns -castorDist),0) *xdir,
+					 max( mturns -castorTheta,0) *tdir)
+                        # slow down the bit at the end
+			self.moveRel ( max((float(self.wireWidth) * eturns ),0) *xdir,
+					 max( eturns,0) *tdir, feed=self.feed*self.endSlowdown)
+			self.moveRel (castorDist * xdir,0, feed=self.feed*self.endSlowdown)
 		elif mode in ['bobbinStart'] :
 			self.moveRel ( min(1.0, numturns)*slope*xdir, min(1.0, numturns)*tdir)
 			self.moveRel ( 0, min(castorTheta, numturns)*tdir)
-			self.moveRel (slope*max(0, numturns-1.0-castorTheta)*xdir, 
-					max(0, numturns-1.0-castorTheta)*tdir) 
+			self.moveRel (slope*max(0, mturns-1.0-castorTheta)*xdir, 
+					max(0, mturns-1.0-castorTheta)*tdir) 
+			self.moveRel (slope*max(0, eturns)*xdir, 
+					max(0, eturns)*tdir, feed=self.feed*self.endSlowdown) 
 			self.moveRel (castorDist * xdir,0)
 
 		if mode in ['freeStandingStart']:
@@ -59,7 +73,7 @@ class camcoil():
 					max(0, numturns-self.jumpTheta-castorTheta)*tdir) 
 		
 
-	def moveRel(self, dx, dTheta):
+	def moveRel(self, dx, dTheta, feed=None):
 		print str(dx)+","+str(dTheta)
 		self.x += dx
 		self.theta += dTheta
@@ -67,6 +81,7 @@ class camcoil():
                         'cmd':'go',
                         'x':self.x,#+float(self.wireWidth)*numturns, 
                         'theta':float(self.spindleRot)*self.theta,#+float(self.spindleRot)*numturns*tdir
+                        'feed':feed,
                 })
 
 	def add_coil( self, numturns, tdir, xstart, xend, **config ):
@@ -100,6 +115,8 @@ class camcoil():
 
 		length = abs(float(xend)-xstart)
 		layerTurns = length/self.wireWidth
+                print ("layerturns = "+str(layerTurns))
+                self.endTurns = layerTurns*self.endProportion
 #		print "layerTurns="+str(layerTurns)+" x="+str(self.x)
 		start=True
 		while turnsleft>layerTurns:
@@ -114,14 +131,14 @@ class camcoil():
 				layerTurns-=1
 #				print "layerTurns="+str(layerTurns)+" x="+str(self.x)
 		self.add_turns(turnsleft, xdir, tdir, castorDist, jumpCastorDist, mode)
-
-	def move( self, xto, thetaTo=None):
+                pprint.pprint (self.commands)
+	def move( self, xto, thetaTo=None, feed=None):
 		if thetaTo is None:
 			self.commands.append(
-     		                 {'cmd':'go', 'x':xto})
+                                {'cmd':'go', 'x':xto, 'feed':feed})
 		else:
 			self.commands.append(
-                                 {'cmd':'go', 'x':xto, 'theta':thetaTo})
+                                {'cmd':'go', 'x':xto, 'theta':thetaTo, 'feed':feed})
 			self.theta = thetaTo
 		self.x = xto
 	def toAngle( self, angle, tdir):
@@ -142,10 +159,10 @@ class camcoil():
 			if c['cmd']=='go':
 				o='G1'
 				if 'x' in c:
-					o+=self.xAxis+str(round(c['x'],4))
+					o+=self.xAxis+str(round(c['x'],2))
 				if 'theta' in c:
-					o+=self.spindleAxis + str(round(c['theta'],4))
-				if 'feed' in c:
+					o+=self.spindleAxis + str(round(c['theta'],2))
+				if 'feed' in c and c['feed'] is not None:
 					o+="F"+str(c['feed'])
 				else:
 					o+="F"+str(self.feed)
@@ -155,6 +172,7 @@ class camcoil():
 		return output
 	def renderFile(self,filename):
 		f = open(filename+".ngc", 'w')
+                f.write(self.prefixGcode+"\n")
 		f.write("\n".join(self.render()))
 
 	def maxCastorAngle(self, dBobbin, dWire):
